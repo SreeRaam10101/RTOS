@@ -1,22 +1,28 @@
 #include <stdint.h>
 #include "kernel.h"
 #include "uart.h"
+#include "sync.h"
 
-static void task_a_entry(void) {
+static semaphore_t data_ready;
+static mutex_t counter_mutex;
+static uint32_t shared_counter = 0;
+
+static void producer_entry(void) {
     for (;;) {
-        uart_puts("task_a\n");
+        delay(100);
+        sem_post(&data_ready);
     }
 }
 
-static void task_b_entry(void) {
+static void consumer_entry(void) {
     for (;;) {
-        uart_puts("task_b\n");
-    }
-}
-
-static void task_low_entry(void) {
-    for (;;) {
-        uart_puts("task_low\n");
+        sem_wait(&data_ready);
+        mutex_lock(&counter_mutex);
+        shared_counter++;
+        uart_puts("consumer: shared_counter=");
+        uart_put_uint32(shared_counter);
+        uart_puts("\n");
+        mutex_unlock(&counter_mutex);
     }
 }
 
@@ -25,9 +31,11 @@ int main(void) {
     kernel_init();
     scheduler_init();
 
-    task_create(task_a_entry, 0);
-    task_create(task_b_entry, 0);
-    task_create(task_low_entry, 1);
+    sem_init(&data_ready, 0);
+    mutex_init(&counter_mutex);
+
+    task_create(producer_entry, 0);
+    task_create(consumer_entry, 0);
 
     systick_init();
     scheduler_start();
