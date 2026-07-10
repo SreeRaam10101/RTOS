@@ -23,6 +23,7 @@ SECTIONS
   {
     _sdata = .;
     *(.data*)
+    . = ALIGN(4);
     _edata = .;
   } > RAM AT> FLASH
 
@@ -31,6 +32,7 @@ SECTIONS
     _sbss = .;
     *(.bss*)
     *(COMMON)
+    . = ALIGN(4);
     _ebss = .;
   } > RAM
 }
