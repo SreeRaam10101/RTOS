@@ -20,7 +20,7 @@ _vectors:
     .word Default_Handler    /* SVCall */
     .word Default_Handler    /* DebugMonitor */
     .word 0                  /* reserved */
-    .word Default_Handler    /* PendSV */
+    .word PendSV_Handler     /* PendSV */
     .word Default_Handler    /* SysTick */
 
     .section .text

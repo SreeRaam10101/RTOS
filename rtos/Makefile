@@ -3,7 +3,7 @@ CC      = $(CROSS)gcc
 CFLAGS  = -mcpu=cortex-m3 -mthumb -nostdlib -nostartfiles -ffreestanding -Wall -Wextra -O0 -g
 LDFLAGS = -T linker.ld -nostdlib -nostartfiles
 
-OBJS = boot.o uart.o main.o
+OBJS = boot.o pendsv.o kernel.o uart.o main.o
 
 all: build/m0.elf
 
@@ -17,6 +17,9 @@ boot.o: boot.s
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 %.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+%.o: %.s
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
