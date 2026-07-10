@@ -9,7 +9,7 @@
 #define ICSR_PENDSVSET (1UL << 28)
 
 static tcb_t task_table[MAX_TASKS];
-static uint32_t task_stacks[MAX_TASKS][TASK_STACK_WORDS];
+static uint32_t task_stacks[MAX_TASKS][TASK_STACK_WORDS] __attribute__((aligned(8)));
 static int num_tasks = 0;
 
 tcb_t *current_tcb = 0;
