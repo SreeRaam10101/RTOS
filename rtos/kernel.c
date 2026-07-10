@@ -13,15 +13,18 @@ static uint32_t task_stacks[MAX_TASKS][TASK_STACK_WORDS] __attribute__((aligned(
 static int num_tasks = 0;
 
 tcb_t *current_tcb = 0;
+tcb_t *ready_queue[MAX_PRIORITY_LEVELS] = {0};
 
 void kernel_init(void) {
     /* PendSV must be the lowest-priority exception: a context switch must
-       never preempt another exception's critical section. */
+       never preempt another exception's critical section. SysTick is left
+       at its power-on-reset priority (0, the highest), so it can always
+       pend PendSV and is never blocked by it. */
     SCB_SHPR3 |= (0xFFUL << 16);
 }
 
-tcb_t *task_create(void (*entry)(void)) {
-    if (num_tasks >= MAX_TASKS) {
+tcb_t *task_create(void (*entry)(void), uint8_t priority) {
+    if (num_tasks >= MAX_TASKS || priority >= MAX_PRIORITY_LEVELS) {
         return 0;
     }
 
@@ -29,11 +32,6 @@ tcb_t *task_create(void (*entry)(void)) {
     uint32_t *stack_top = &task_stacks[num_tasks][TASK_STACK_WORDS];
     uint32_t *sp = stack_top;
 
-    /* Build a fake exception-return frame so the first switch-in looks
-       identical, to the restore code, to resuming after a real switch.
-       Hardware frame (low->high addr): R0,R1,R2,R3,R12,LR,PC,xPSR.
-       We write top-down, so the first word we write lands at the
-       highest address in the frame (xPSR), the last at the lowest (R0). */
     sp -= 1; *sp = 0x01000000;        /* xPSR: Thumb bit set */
     sp -= 1; *sp = (uint32_t)entry;   /* PC: task entry point */
     sp -= 1; *sp = 0xFFFFFFFD;        /* LR: dummy, tasks never return */
@@ -46,16 +44,16 @@ tcb_t *task_create(void (*entry)(void)) {
 
     tcb->sp = sp;
     tcb->state = TASK_READY;
-    tcb->priority = 0;
-    tcb->base_priority = 0;
+    tcb->priority = priority;
+    tcb->base_priority = priority;
     tcb->period_ticks = 0;
     tcb->deadline_ticks = 0;
     tcb->wake_tick = 0;
-    tcb->next = 0;
 
-    if (current_tcb == 0) {
-        current_tcb = tcb;   /* first task created becomes the initial task */
-    }
+    /* Prepend into this priority's ready list. Creation order doesn't need
+       to matter for fairness -- scheduler_next() rotates at runtime. */
+    tcb->next = ready_queue[priority];
+    ready_queue[priority] = tcb;
 
     num_tasks++;
     return tcb;
@@ -63,17 +61,4 @@ tcb_t *task_create(void (*entry)(void)) {
 
 void task_yield(void) {
     SCB_ICSR = ICSR_PENDSVSET;
-}
-
-/* M1-only placeholder: naive round-robin over every created task.
-   Replaced by the real priority-array scheduler in M2's scheduler.c. */
-void scheduler_next(void) {
-    int idx = 0;
-    for (int i = 0; i < num_tasks; i++) {
-        if (&task_table[i] == current_tcb) {
-            idx = i;
-            break;
-        }
-    }
-    current_tcb = &task_table[(idx + 1) % num_tasks];
 }

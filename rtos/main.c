@@ -19,11 +19,13 @@ static void task1_entry(void) {
 int main(void) {
     uart_init();
     kernel_init();
+    scheduler_init();
 
-    task_create(task0_entry);
-    task_create(task1_entry);
+    task_create(task0_entry, 0);
+    task_create(task1_entry, 0);
 
-    kernel_start();
+    systick_init();
+    scheduler_start();
 
     for (;;) { }  /* unreachable */
 }

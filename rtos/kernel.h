@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define MAX_PRIORITY_LEVELS 4
+
 typedef enum { TASK_READY, TASK_RUNNING, TASK_BLOCKED, TASK_UNUSED } task_state_t;
 
 typedef struct tcb {
@@ -17,11 +19,17 @@ typedef struct tcb {
 } tcb_t;
 
 extern tcb_t *current_tcb;
+extern tcb_t *ready_queue[MAX_PRIORITY_LEVELS];
+extern volatile uint32_t tick_count;
 
 void kernel_init(void);
-tcb_t *task_create(void (*entry)(void));
-void kernel_start(void);
+tcb_t *task_create(void (*entry)(void), uint8_t priority);
 void task_yield(void);
+
+void scheduler_init(void);
 void scheduler_next(void);
+void scheduler_start(void);
+
+void systick_init(void);
 
 #endif

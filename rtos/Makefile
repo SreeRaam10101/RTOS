@@ -3,7 +3,7 @@ CC      = $(CROSS)gcc
 CFLAGS  = -mcpu=cortex-m3 -mthumb -nostdlib -nostartfiles -ffreestanding -Wall -Wextra -O0 -g
 LDFLAGS = -T linker.ld -nostdlib -nostartfiles
 
-OBJS = boot.o pendsv.o kernel.o uart.o main.o
+OBJS = boot.o pendsv.o kernel.o scheduler.o systick.o uart.o main.o
 
 all: build/kernel.elf
 

@@ -21,7 +21,7 @@ _vectors:
     .word Default_Handler    /* DebugMonitor */
     .word 0                  /* reserved */
     .word PendSV_Handler     /* PendSV */
-    .word Default_Handler    /* SysTick */
+    .word SysTick_Handler    /* SysTick */
 
     .section .text
     .thumb_func

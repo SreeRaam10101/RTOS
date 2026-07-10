@@ -26,8 +26,10 @@ PendSV_Handler:
     bx lr
 
     .thumb_func
-    .global kernel_start
-kernel_start:
+    .global scheduler_start
+scheduler_start:
+    bl scheduler_next       /* NEW: pick the correct task by priority, not creation order */
+
     ldr r0, =current_tcb
     ldr r0, [r0]           /* r0 = current_tcb (set by task_create) */
     ldr r0, [r0]           /* r0 = current_tcb->sp (first struct member) */
