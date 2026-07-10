@@ -5,15 +5,20 @@
 > Learning doc: `rtos-whiteboard.md` (concepts §0–§8, milestone arc §6b). Session logs: `CC-Session-Logs/`.
 > Architecture spec (M0–M5, approved): `docs/superpowers/specs/2026-07-09-rtos-core-architecture-design.md`.
 > M0 implementation plan (complete, merged): `docs/superpowers/plans/2026-07-09-m0-bare-metal-boot.md`.
+> M1 implementation plan (implemented, reviewed, NOT yet merged): `docs/superpowers/plans/2026-07-10-m1-context-switch.md`.
 
 ## Status
 
-**Stage:** M0 implemented, reviewed, and merged to `master`. Next: write the M1 (context switch) implementation plan via `writing-plans`, then execute the same way (subagent-driven-development).
+**Stage:** M1 implemented across 2 tasks (both task-reviews approved) and the final whole-branch review returned **"ready to merge, with one fix"** — not yet applied, not yet merged. Work is sitting in the open worktree at `.claude/worktrees/m1-context-switch` (branch `worktree-m1-context-switch`, HEAD `dda0777`), NOT on `master` yet.
+
+**Resume here:** the final reviewer's Bash tool was down for its entire session (~40 failed attempts) — it verified correctness via independent static hand-trace only, never actually ran `make`/QEMU/gdb. Before merging: (1) apply the stack-alignment fix below, (2) actually run `cd rtos && make clean && make && cd .. && ./tests/m1_test.sh` and the gdb `current_tcb`-alternation check from the plan's Task 2 Step 7 to confirm the hand-trace's predictions hold, (3) then merge via `finishing-a-development-branch`.
+
+**The one recommended fix (Important, not blocking M1's cooperative demo but load-bearing for M2):** `rtos/kernel.c`'s `task_stacks` array has no alignment attribute (`static uint32_t task_stacks[MAX_TASKS][TASK_STACK_WORDS];`, only 4-byte-aligned via `.bss`'s `ALIGN(4)`). AAPCS/ARMv7-M require 8-byte stack alignment at call boundaries; `task_create()` hand-builds the initial exception frame so hardware's STKALIGN auto-padding never corrects it. Harmless today (cooperative-only), but M2 adds SysTick-driven preemption which hardware-stacks onto whatever PSP a task has — misalignment becomes a live bug then. Fix: add `__attribute__((aligned(8)))` to the `task_stacks` declaration.
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
-| M0 | Bare-metal boot — one task prints forever | ✅ done (`rtos/`: linker.ld, boot.s, uart.{h,c}, main.c; `tests/m0_test.sh` passes) |
-| M1 | Context switch — 2 tasks alternate via PendSV (**the core**) | ⏳ |
+| M0 | Bare-metal boot — one task prints forever | ✅ done, merged (`rtos/`: linker.ld, boot.s, uart.{h,c}, main.c; `tests/m0_test.sh` passes) |
+| M1 | Context switch — 2 tasks alternate via PendSV (**the core**) | 🔶 implemented + reviewed, **not merged** — see Status above |
 | M2 | Preemptive scheduler — SysTick tick + priority ready-queue | ⏳ |
 | M3 | Blocking primitives — delay(ticks), semaphore, mutex | ⏳ |
 | M4 | Priority inheritance — build inversion, then fix (**the payoff**) | ⏳ |
@@ -44,12 +49,17 @@
 - **"Raspberry Pi" ≠ "Pi Pico"** — the RTOS target is the **Pico** (RP2040/RP2350, Cortex-M microcontroller), NOT the Linux SBC (Pi 4/5, has MMU/runs Linux).
 - **UART0 on mps2-an385 is CMSDK APB UART @ `0x40004000`** — DATA/STATE/CTRL/BAUDDIV at `0x00/0x04/0x08/0x10`; SYSCLK = 25MHz. Confirmed from QEMU's own source (`hw/arm/mps2.c`, `hw/char/cmsdk-apb-uart.c`), not guessed — wrong peripheral addresses fail silently (no compiler error), so verify against source/datasheet, not memory.
 - **Linker script `.data`/`.bss` boundaries need explicit `. = ALIGN(4);`** before `_edata`/`_ebss` — the 4-byte-stride copy/zero loop in `Reset_Handler` silently overruns by up to 3 bytes if a section's size isn't a multiple of 4. Invisible in M0 (no globals yet); added proactively before M1 introduces TCBs/globals.
+- **M1's context-switch frame contract (verified correct via independent hand-trace):** `task_create()` builds a fake exception frame top-down on a new task's stack — high→low address: `xPSR(0x01000000), PC(entry), LR(0xFFFFFFFD), R12, R3, R2, R1, R0`, then reserves 8 more words below for `R4-R11`. `tcb->sp` points at the bottom (R4). `PendSV_Handler`'s `stmdb`/`ldmia {r4-r11}` and `kernel_start`'s manual bootstrap unwind both consume exactly this layout — first-run-via-bootstrap and resume-via-real-switch converge on the same frame, which is the standard minimal-RTOS trick (same idiom FreeRTOS/ChibiOS use).
+- **`bl scheduler_next` inside `PendSV_Handler` clobbers `lr`**, which holds `EXC_RETURN` (`0xFFFFFFFD`, needed for the final `bx lr`) — must be preserved with `push {lr}` / `pop {lr}` bracketing the call. Easy to miss, silent corruption if missed.
+- **Two of my own plan's test-script lines were buggy** (`grep -c ... || echo 0` double-prints on zero-match, corrupting numeric comparisons; `^task0$` anchors don't match because `uart_puts()` emits `\r\n`) — caught and fixed by the M1 Task-2 implementer, confined to `tests/m1_test.sh`. Lesson: even carefully-derived plan code needs the same scrutiny as hand-written code: verify shell idioms (`|| echo 0` style fallbacks especially) rather than assuming plan text is correct by construction.
+- **Worktree workflow per milestone**: each milestone gets its own `EnterWorktree` (name matches milestone, e.g. `m1-context-switch`) branched from `master`. If plan/CLAUDE.md docs get committed to `master` *after* a worktree was already created, the worktree branch needs an explicit `git merge master` to pick them up — worktrees don't auto-sync.
+- **User does not want `Co-Authored-By: Claude` in commit messages** for this project — confirmed after an explicit rejection during the `git init` commit.
 
 ## Next Steps
 
-1. Write the M1 (context switch) implementation plan via `writing-plans`, scoped to `boot.s`/`pendsv.s` + `kernel.c` per the architecture spec's file-layout table.
-2. Execute M1 via `subagent-driven-development` (same pattern as M0: worktree → per-task implementer + reviewer → final whole-branch review → merge).
-3. Toolchain is fully installed now: `qemu-system-arm`, `arm-none-eabi-gcc`, `arm-none-eabi-gdb` all confirmed working during M0.
+1. **Resume M1 finish-up** (see Status above): apply the 8-byte stack-alignment fix, actually run the build/test/gdb verification (not yet executed this session due to a tool outage), then merge M1 to `master` via `finishing-a-development-branch`. The worktree at `.claude/worktrees/m1-context-switch` is still open with the reviewed work — don't re-run the implementation tasks, don't re-do the two task-level reviews (already ✅ approved with hand-traced correctness).
+2. After M1 merges: write the M2 (preemptive scheduler) implementation plan via `writing-plans`. Note for that plan: `scheduler_next()` needs to move from `kernel.c` (M1's placeholder, naive round-robin) to a new `scheduler.c` with the real priority-array design — `pendsv.s`/`kernel_start` should need zero changes (same C function signature), but `task_table`/`num_tasks` bookkeeping in `kernel.c` will need to be reworked into the `ready_queue[]` enqueue/dequeue model from the architecture spec.
+3. Toolchain is fully installed: `qemu-system-arm`, `arm-none-eabi-gcc`, `arm-none-eabi-gdb` all confirmed working during M0.
 
 ## Conventions
 
