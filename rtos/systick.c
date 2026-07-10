@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "kernel.h"
+#include "sync.h"
 
 #define SYST_CSR   (*(volatile uint32_t *)0xE000E010)
 #define SYST_RVR   (*(volatile uint32_t *)0xE000E014)
@@ -25,6 +26,7 @@ void systick_init(void) {
 
 void SysTick_Handler(void) {
     tick_count++;
+    delay_tick_check();
     /* Pend a switch on every tick, unconditionally. If the top ready
        priority has only one task, scheduler_next()'s rotation is a no-op
        and this is a cheap same-task resume; if there are several, this is

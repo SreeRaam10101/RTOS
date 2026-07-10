@@ -32,3 +32,18 @@ void uart_puts(const char *s) {
         s++;
     }
 }
+
+void uart_put_uint32(uint32_t v) {
+    char buf[11];   /* "4294967295" (10 digits) + NUL */
+    int i = 10;
+    buf[i] = '\0';
+    if (v == 0) {
+        buf[--i] = '0';
+    } else {
+        while (v > 0) {
+            buf[--i] = (char)('0' + (v % 10));
+            v /= 10;
+        }
+    }
+    uart_puts(&buf[i]);
+}
