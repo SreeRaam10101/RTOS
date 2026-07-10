@@ -1,16 +1,29 @@
 #include <stdint.h>
+#include "kernel.h"
 #include "uart.h"
 
-static void delay(volatile uint32_t count) {
-    while (count--) { }
+static void task0_entry(void) {
+    for (;;) {
+        uart_puts("task0\n");
+        task_yield();
+    }
+}
+
+static void task1_entry(void) {
+    for (;;) {
+        uart_puts("task1\n");
+        task_yield();
+    }
 }
 
 int main(void) {
     uart_init();
-    uart_puts("M0: boot OK\n");
+    kernel_init();
 
-    for (;;) {
-        uart_puts("M0: task0 alive\n");
-        delay(2000000);
-    }
+    task_create(task0_entry);
+    task_create(task1_entry);
+
+    kernel_start();
+
+    for (;;) { }  /* unreachable */
 }
