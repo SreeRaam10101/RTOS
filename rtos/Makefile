@@ -5,12 +5,12 @@ LDFLAGS = -T linker.ld -nostdlib -nostartfiles
 
 OBJS = boot.o pendsv.o kernel.o uart.o main.o
 
-all: build/m0.elf
+all: build/kernel.elf
 
 build:
 	mkdir -p build
 
-build/m0.elf: $(OBJS) linker.ld | build
+build/kernel.elf: $(OBJS) linker.ld | build
 	$(CC) $(LDFLAGS) -o $@ $(OBJS)
 
 boot.o: boot.s
