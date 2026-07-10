@@ -10,10 +10,6 @@ static void idle_entry(void) {
 }
 
 void scheduler_init(void) {
-    /* Lowest priority, created first so the ready-queue is never empty.
-       Nothing in M2 ever removes a task from its ready-queue slot (no
-       blocking primitives yet), so this invariant holds unconditionally
-       for this milestone. */
     task_create(idle_entry, IDLE_PRIORITY);
 }
 
@@ -23,26 +19,23 @@ static int highest_ready_priority(void) {
             return p;
         }
     }
-    return -1;  /* unreachable in M2: the idle task always occupies the last slot */
+    return -1;  /* unreachable: the idle task always occupies the last slot */
 }
 
 void scheduler_next(void) {
-    int p = highest_ready_priority();
-    tcb_t *head = ready_queue[p];
-
-    if (head->next != 0) {
-        /* More than one task at this priority: rotate the list so the
-           current head moves to the tail before we reselect. This is what
-           makes every SysTick-driven switch actually share the CPU between
-           equal-priority tasks, instead of the same task always winning. */
-        ready_queue[p] = head->next;
-        tcb_t *tail = ready_queue[p];
-        while (tail->next != 0) {
-            tail = tail->next;
-        }
-        tail->next = head;
-        head->next = 0;
+    if (current_tcb != 0 && current_tcb->state == TASK_RUNNING) {
+        /* still runnable, just preempted (by SysTick or an explicit yield):
+           go back to the tail of its own priority level. */
+        ready_enqueue(current_tcb);
     }
+    /* if current_tcb->state == TASK_BLOCKED, the blocking primitive that
+       put it there already removed it from ready_queue and changed its
+       state before pending PendSV -- nothing to do here for that case.
+       (current_tcb == 0 only on the very first call, from scheduler_start
+       before any task has ever run -- also nothing to do.) */
 
+    int p = highest_ready_priority();
     current_tcb = ready_queue[p];
+    ready_remove(current_tcb);
+    current_tcb->state = TASK_RUNNING;
 }

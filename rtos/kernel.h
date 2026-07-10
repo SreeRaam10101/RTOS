@@ -26,6 +26,12 @@ void kernel_init(void);
 tcb_t *task_create(void (*entry)(void), uint8_t priority);
 void task_yield(void);
 
+void ready_enqueue(tcb_t *tcb);
+void ready_remove(tcb_t *tcb);
+
+uint32_t critical_enter(void);
+void critical_exit(uint32_t saved_primask);
+
 void scheduler_init(void);
 void scheduler_next(void);
 void scheduler_start(void);

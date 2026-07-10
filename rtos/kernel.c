@@ -16,11 +16,43 @@ tcb_t *current_tcb = 0;
 tcb_t *ready_queue[MAX_PRIORITY_LEVELS] = {0};
 
 void kernel_init(void) {
-    /* PendSV must be the lowest-priority exception: a context switch must
-       never preempt another exception's critical section. SysTick is left
-       at its power-on-reset priority (0, the highest), so it can always
-       pend PendSV and is never blocked by it. */
     SCB_SHPR3 |= (0xFFUL << 16);
+}
+
+uint32_t critical_enter(void) {
+    uint32_t primask;
+    __asm__ volatile ("mrs %0, primask" : "=r" (primask));
+    __asm__ volatile ("cpsid i");
+    return primask;
+}
+
+void critical_exit(uint32_t saved_primask) {
+    __asm__ volatile ("msr primask, %0" : : "r" (saved_primask));
+}
+
+void ready_enqueue(tcb_t *tcb) {
+    tcb->state = TASK_READY;
+    tcb->next = 0;
+    if (ready_queue[tcb->priority] == 0) {
+        ready_queue[tcb->priority] = tcb;
+        return;
+    }
+    tcb_t *tail = ready_queue[tcb->priority];
+    while (tail->next != 0) {
+        tail = tail->next;
+    }
+    tail->next = tcb;
+}
+
+void ready_remove(tcb_t *tcb) {
+    tcb_t **pp = &ready_queue[tcb->priority];
+    while (*pp != 0 && *pp != tcb) {
+        pp = &(*pp)->next;
+    }
+    if (*pp == tcb) {
+        *pp = tcb->next;
+    }
+    tcb->next = 0;
 }
 
 tcb_t *task_create(void (*entry)(void), uint8_t priority) {
@@ -43,17 +75,13 @@ tcb_t *task_create(void (*entry)(void), uint8_t priority) {
     sp -= 8;                          /* R4-R11: software frame, values irrelevant */
 
     tcb->sp = sp;
-    tcb->state = TASK_READY;
     tcb->priority = priority;
     tcb->base_priority = priority;
     tcb->period_ticks = 0;
     tcb->deadline_ticks = 0;
     tcb->wake_tick = 0;
 
-    /* Prepend into this priority's ready list. Creation order doesn't need
-       to matter for fairness -- scheduler_next() rotates at runtime. */
-    tcb->next = ready_queue[priority];
-    ready_queue[priority] = tcb;
+    ready_enqueue(tcb);   /* sets state = TASK_READY, appends to the tail */
 
     num_tasks++;
     return tcb;
