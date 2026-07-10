@@ -3,15 +3,16 @@
 > From-scratch tiny RTOS, learned top-to-bottom on QEMU (ARM Cortex-M).
 > Builds on prior xv6-x64 scheduler work (`/Users/raam/Desktop/Notes/OS`).
 > Learning doc: `rtos-whiteboard.md` (concepts §0–§8, milestone arc §6b). Session logs: `CC-Session-Logs/`.
-> Architecture spec (M0–M5, approved pending final read-through): `docs/superpowers/specs/2026-07-09-rtos-core-architecture-design.md`.
+> Architecture spec (M0–M5, approved): `docs/superpowers/specs/2026-07-09-rtos-core-architecture-design.md`.
+> M0 implementation plan (complete, merged): `docs/superpowers/plans/2026-07-09-m0-bare-metal-boot.md`.
 
 ## Status
 
-**Stage:** architecture design complete for M0–M5 (user reviewing spec) — next is `writing-plans` skill for the implementation plan. HARD-GATE still applies: no code until the plan is written and approved.
+**Stage:** M0 implemented, reviewed, and merged to `master`. Next: write the M1 (context switch) implementation plan via `writing-plans`, then execute the same way (subagent-driven-development).
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
-| M0 | Bare-metal boot — one task prints forever | ⏳ not started |
+| M0 | Bare-metal boot — one task prints forever | ✅ done (`rtos/`: linker.ld, boot.s, uart.{h,c}, main.c; `tests/m0_test.sh` passes) |
 | M1 | Context switch — 2 tasks alternate via PendSV (**the core**) | ⏳ |
 | M2 | Preemptive scheduler — SysTick tick + priority ready-queue | ⏳ |
 | M3 | Blocking primitives — delay(ticks), semaphore, mutex | ⏳ |
@@ -41,13 +42,14 @@
 - **M4 (priority inversion→inheritance) is the teaching payoff** — inversion invisible until constructed; Mars Pathfinder story; best demo + writeup.
 - **QEMU is legit for real-time learning** — deadline logic counted in ticks, not ns (same tick-based reasoning as xv6 `create_tick`/`first_run_tick`).
 - **"Raspberry Pi" ≠ "Pi Pico"** — the RTOS target is the **Pico** (RP2040/RP2350, Cortex-M microcontroller), NOT the Linux SBC (Pi 4/5, has MMU/runs Linux).
+- **UART0 on mps2-an385 is CMSDK APB UART @ `0x40004000`** — DATA/STATE/CTRL/BAUDDIV at `0x00/0x04/0x08/0x10`; SYSCLK = 25MHz. Confirmed from QEMU's own source (`hw/arm/mps2.c`, `hw/char/cmsdk-apb-uart.c`), not guessed — wrong peripheral addresses fail silently (no compiler error), so verify against source/datasheet, not memory.
+- **Linker script `.data`/`.bss` boundaries need explicit `. = ALIGN(4);`** before `_edata`/`_ebss` — the 4-byte-stride copy/zero loop in `Reset_Handler` silently overruns by up to 3 bytes if a section's size isn't a multiple of 4. Invisible in M0 (no globals yet); added proactively before M1 introduces TCBs/globals.
 
 ## Next Steps
 
-1. User finishes reviewing `docs/superpowers/specs/2026-07-09-rtos-core-architecture-design.md`; request changes or approve.
-2. Invoke `writing-plans` skill to turn the approved spec into a milestone-by-milestone implementation plan.
-3. **Toolchain gap:** `qemu-system-arm` is installed (confirmed v10.2.0); `arm-none-eabi-gcc` + `arm-none-eabi-gdb` are **not installed yet** — needed before M0 implementation starts.
-4. This project directory is **not yet a git repo** — spec doc could not be committed per the brainstorming skill's normal flow; consider `git init` before/during implementation.
+1. Write the M1 (context switch) implementation plan via `writing-plans`, scoped to `boot.s`/`pendsv.s` + `kernel.c` per the architecture spec's file-layout table.
+2. Execute M1 via `subagent-driven-development` (same pattern as M0: worktree → per-task implementer + reviewer → final whole-branch review → merge).
+3. Toolchain is fully installed now: `qemu-system-arm`, `arm-none-eabi-gcc`, `arm-none-eabi-gdb` all confirmed working during M0.
 
 ## Conventions
 
