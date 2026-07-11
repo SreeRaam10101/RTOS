@@ -6,6 +6,7 @@
 
 void delay(uint32_t ticks);
 void delay_tick_check(void);
+void block_until(uint32_t target_tick);
 
 typedef struct {
     int count;
