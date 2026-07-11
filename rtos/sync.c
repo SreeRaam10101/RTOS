@@ -19,13 +19,17 @@ static void delay_list_insert(tcb_t *tcb) {
     *pp = tcb;
 }
 
-void delay(uint32_t ticks) {
+void block_until(uint32_t target_tick) {
     uint32_t s = critical_enter();
-    current_tcb->wake_tick = tick_count + ticks;
+    current_tcb->wake_tick = target_tick;
     current_tcb->state = TASK_BLOCKED;
     delay_list_insert(current_tcb);
     critical_exit(s);
     task_yield();
+}
+
+void delay(uint32_t ticks) {
+    block_until(tick_count + ticks);
 }
 
 void delay_tick_check(void) {
