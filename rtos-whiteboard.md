@@ -67,6 +67,7 @@ The RTOS question xv6 never asked: *given these periods, is meeting all deadline
   - Cᵢ = worst-case compute time, Tᵢ = period.
 - **EDF bound:** schedulable iff `U ≤ 1.0` (uses the CPU better than RMS).
 - This is a *provable* property — the kind of guarantee that makes RTOS "real-time."
+- **Caveat:** the bound above assumes *implicit deadlines* (Dᵢ = Tᵢ). If a task's deadline is shorter than its period (constrained deadline, Dᵢ < Tᵢ, as in the M5 demo), the bound only proves "schedulable if deadlines equaled periods" — the real, shorter deadlines need the runtime deadline-miss counter to actually be checked.
 
 ---
 
