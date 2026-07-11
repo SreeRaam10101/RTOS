@@ -2,6 +2,10 @@
 #include "kernel.h"
 #include "sync.h"
 
+#ifndef PRIORITY_INHERITANCE_ENABLED
+#define PRIORITY_INHERITANCE_ENABLED 1
+#endif
+
 /* ---- delay() : sorted-ascending-by-wake_tick wait-list ---- */
 
 static tcb_t *delay_list = 0;
@@ -56,6 +60,32 @@ static tcb_t *wait_queue_pop_highest(tcb_t **wait_queue) {
     return tcb;
 }
 
+static void boost_priority(tcb_t *tcb, uint8_t new_priority) {
+    if (new_priority >= tcb->priority) {
+        return;   /* only boost to a numerically lower (higher) priority */
+    }
+    if (tcb->state == TASK_READY) {
+        ready_remove(tcb);
+        tcb->priority = new_priority;
+        ready_enqueue(tcb);
+    } else {
+        tcb->priority = new_priority;
+    }
+}
+
+static void restore_priority(tcb_t *tcb) {
+    if (tcb->priority == tcb->base_priority) {
+        return;
+    }
+    if (tcb->state == TASK_READY) {
+        ready_remove(tcb);
+        tcb->priority = tcb->base_priority;
+        ready_enqueue(tcb);
+    } else {
+        tcb->priority = tcb->base_priority;
+    }
+}
+
 /* ---- semaphore ---- */
 
 void sem_init(semaphore_t *sem, int initial_count) {
@@ -104,6 +134,11 @@ void mutex_lock(mutex_t *m) {
         critical_exit(s);
         return;
     }
+#if PRIORITY_INHERITANCE_ENABLED
+    if (m->owner != 0 && m->owner->priority > current_tcb->priority) {
+        boost_priority(m->owner, current_tcb->priority);
+    }
+#endif
     current_tcb->state = TASK_BLOCKED;
     current_tcb->next = m->wait_queue;
     m->wait_queue = current_tcb;
@@ -115,6 +150,9 @@ void mutex_lock(mutex_t *m) {
 
 void mutex_unlock(mutex_t *m) {
     uint32_t s = critical_enter();
+    if (current_tcb->priority != current_tcb->base_priority) {
+        restore_priority(current_tcb);
+    }
     m->owner = 0;
     tcb_t *woken = wait_queue_pop_highest(&m->wait_queue);
     if (woken != 0) {

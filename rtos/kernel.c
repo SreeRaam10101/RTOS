@@ -51,8 +51,8 @@ void ready_remove(tcb_t *tcb) {
     }
     if (*pp == tcb) {
         *pp = tcb->next;
+        tcb->next = 0;
     }
-    tcb->next = 0;
 }
 
 tcb_t *task_create(void (*entry)(void), uint8_t priority) {
