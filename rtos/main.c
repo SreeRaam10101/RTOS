@@ -41,6 +41,9 @@ static void low_entry(void) {
         }
         uart_puts("Low: releasing\n");
         mutex_unlock(&shared_mutex);
+        uart_puts("Low: priority_after_unlock=");
+        uart_put_uint32(current_tcb->priority);
+        uart_puts("\n");
         delay(50);
     }
 }

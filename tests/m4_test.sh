@@ -27,6 +27,8 @@ NO_INHERIT_MEDIUM=${NO_INHERIT_MEDIUM:-0}
 INHERIT_HIGH=$(echo "$INHERIT_LOG" | grep -c '^High: acquired')
 INHERIT_HIGH=${INHERIT_HIGH:-0}
 
+LOW_RESTORED_PRIORITIES=$(echo "$INHERIT_LOG" | grep '^Low: priority_after_unlock=' | sed 's/^Low: priority_after_unlock=//')
+
 echo "no-inheritance build: High acquired=$NO_INHERIT_HIGH, Medium running=$NO_INHERIT_MEDIUM"
 echo "with-inheritance build: High acquired=$INHERIT_HIGH"
 
@@ -47,6 +49,18 @@ if [ "$INHERIT_HIGH" -lt 1 ]; then
     FAIL=1
 fi
 
+if [ -z "$LOW_RESTORED_PRIORITIES" ]; then
+    echo "FAIL: expected at least one 'Low: priority_after_unlock=' line in the with-inheritance build log, found none -- restore_priority() check cannot run"
+    FAIL=1
+else
+    for p in $LOW_RESTORED_PRIORITIES; do
+        if [ "$p" -ne 2 ]; then
+            echo "FAIL: expected Low's priority to be restored to base_priority=2 after mutex_unlock, got $p -- restore_priority() is not working, Low is stuck boosted"
+            FAIL=1
+        fi
+    done
+fi
+
 if [ "$FAIL" -eq 1 ]; then
     echo "--- no-inheritance log ---"
     cat rtos/build/m4_no_inherit.log
@@ -55,5 +69,5 @@ if [ "$FAIL" -eq 1 ]; then
     exit 1
 fi
 
-echo "PASS: no-inheritance build starves High (0 acquisitions) while Medium hogs the CPU ($NO_INHERIT_MEDIUM runs); with-inheritance build lets High acquire the mutex ($INHERIT_HIGH times) -- priority inversion demonstrated and fixed"
+echo "PASS: no-inheritance build starves High (0 acquisitions) while Medium hogs the CPU ($NO_INHERIT_MEDIUM runs); with-inheritance build lets High acquire the mutex ($INHERIT_HIGH times) -- priority inversion demonstrated and fixed; Low's priority is restored to base_priority=2 after every mutex_unlock, confirming restore_priority() works"
 exit 0
