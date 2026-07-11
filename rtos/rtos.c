@@ -75,6 +75,24 @@ uint32_t periodic_get_miss_count(tcb_t *tcb) {
     return (info != 0) ? info->miss_count : 0;
 }
 
+/*
+ * rms_check() implements the classic Liu & Layland utilization bound
+ * (U <= N(2^(1/N)-1)), which is only a valid *sufficient* schedulability
+ * condition when every task's deadline equals its period (implicit
+ * deadlines, D=T). It looks only at period_ticks and wcet_ticks; it does
+ * NOT consider deadline_ticks at all.
+ *
+ * When a task set has deadlines shorter than its periods (constrained
+ * deadlines, D<T -- as this project's M5 demo does: PeriodicA period
+ * 50/deadline 40, PeriodicB period 80/deadline 60), this function only
+ * answers "would this task set be schedulable if deadlines equaled
+ * periods?". That's a necessary-but-not-sufficient signal for the
+ * stricter D<T case -- it does not itself prove the real, shorter
+ * deadlines are always met. The per-task deadline-miss counter, updated
+ * in task_wait_for_release() below using the actual deadline_ticks, is
+ * what enforces and catches violations of those real deadlines at
+ * runtime.
+ */
 int rms_check(void) {
     static const uint32_t rms_bound_x10000[] = { 0, 10000, 8284, 7798, 7568 };
 

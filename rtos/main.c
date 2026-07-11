@@ -43,6 +43,9 @@ int main(void) {
     periodic_task_create(periodic_a_entry, 0, 50, 40, 5);
     periodic_task_create(periodic_b_entry, 1, 80, 60, 10);
 
+    /* -- see rms_check()'s doc comment in rtos.c: this is the D=T sufficient
+       condition, not a proof about the demo's actual D<T deadlines below;
+       the deadline-miss counter is what enforces those. */
     int schedulable = rms_check();
     uart_puts("RMS check: U=");
     uart_put_uint32(rms_get_utilization_x10000());
