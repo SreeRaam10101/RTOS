@@ -1,50 +1,37 @@
 #include <stdint.h>
 #include "kernel.h"
 #include "uart.h"
-#include "sync.h"
+#include "rtos.h"
 
-static mutex_t shared_mutex;
-static volatile uint32_t medium_run_count = 0;
-
-#define WORK_TICKS 200
-
-static void high_entry(void) {
-    delay(5);
+static void periodic_a_entry(void) {
     for (;;) {
-        mutex_lock(&shared_mutex);
-        uart_puts("High: acquired\n");
-        mutex_unlock(&shared_mutex);
-        delay(300);
-    }
-}
-
-static void medium_entry(void) {
-    delay(2);
-    for (;;) {
-        medium_run_count++;
-        if (medium_run_count % 5000 == 0) {
-            uart_puts("Medium: running\n");
-        }
-    }
-}
-
-static void low_entry(void) {
-    for (;;) {
-        mutex_lock(&shared_mutex);
-        uart_puts("Low: acquired\n");
-        uint32_t start = tick_count;
-        while (tick_count - start < WORK_TICKS) {
-            /* simulate holding the mutex while doing bounded work --
-               a real busy spin, not delay(), so this task stays
-               TASK_RUNNING/TASK_READY and is only removable by priority
-               preemption, never by voluntarily yielding. */
-        }
-        uart_puts("Low: releasing\n");
-        mutex_unlock(&shared_mutex);
-        uart_puts("Low: priority_after_unlock=");
-        uart_put_uint32(current_tcb->priority);
+        task_wait_for_release();
+        uart_puts("PeriodicA: tick=");
+        uart_put_uint32(tick_count);
+        uart_puts(" misses=");
+        uart_put_uint32(periodic_get_miss_count(current_tcb));
         uart_puts("\n");
-        delay(50);
+    }
+}
+
+static void periodic_b_entry(void) {
+    uint32_t iteration = 0;
+    for (;;) {
+        task_wait_for_release();
+        iteration++;
+        uint32_t work_ticks = (iteration % 3 == 0) ? 70 : 5;
+        uint32_t start = tick_count;
+        while (tick_count - start < work_ticks) {
+            /* simulate variable-length periodic work; every 3rd iteration
+               deliberately exceeds the 60-tick deadline to demonstrate the
+               deadline-miss counter as a real runtime safety net, distinct
+               from rms_check()'s static/offline guarantee. */
+        }
+        uart_puts("PeriodicB: tick=");
+        uart_put_uint32(tick_count);
+        uart_puts(" misses=");
+        uart_put_uint32(periodic_get_miss_count(current_tcb));
+        uart_puts("\n");
     }
 }
 
@@ -53,11 +40,15 @@ int main(void) {
     kernel_init();
     scheduler_init();
 
-    mutex_init(&shared_mutex);
+    periodic_task_create(periodic_a_entry, 0, 50, 40, 5);
+    periodic_task_create(periodic_b_entry, 1, 80, 60, 10);
 
-    task_create(high_entry, 0);
-    task_create(medium_entry, 1);
-    task_create(low_entry, 2);
+    int schedulable = rms_check();
+    uart_puts("RMS check: U=");
+    uart_put_uint32(rms_get_utilization_x10000());
+    uart_puts(" bound=");
+    uart_put_uint32(rms_get_bound_x10000());
+    uart_puts(schedulable ? " => SCHEDULABLE\n" : " => NOT SCHEDULABLE\n");
 
     systick_init();
     scheduler_start();
