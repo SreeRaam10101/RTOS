@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi qemu-system-arm
+
+      - name: Build
+        run: |
+          cd rtos
+          make clean
+          make
+
+      - name: Run latest milestone test (M5 -- see tests/README.md for why only the latest test is expected to pass)
+        run: ./tests/m5_test.sh
