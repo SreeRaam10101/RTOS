@@ -12,9 +12,11 @@ typedef struct tcb {
     task_state_t state;
     uint8_t priority;
     uint8_t base_priority;
+    uint8_t id;
     uint32_t period_ticks;
     uint32_t deadline_ticks;
     uint32_t wake_tick;
+    uint32_t abs_deadline;
     struct tcb *next;
 } tcb_t;
 
