@@ -2,7 +2,7 @@
 
 > From-scratch tiny RTOS, learned top-to-bottom on QEMU (ARM Cortex-M).
 > Builds on prior xv6-x64 scheduler work (`/Users/raam/Desktop/Notes/OS`).
-> Learning doc: `rtos-whiteboard.md` (concepts §0–§8, milestone arc §6b). Session logs: `CC-Session-Logs/`.
+> Learning doc: `rtos-whiteboard.md` (concepts §0–§9, milestone arc §6b). Session logs: `CC-Session-Logs/`.
 > Architecture spec (M0–M5, approved): `docs/superpowers/specs/2026-07-09-rtos-core-architecture-design.md`.
 > M0 implementation plan (complete, merged): `docs/superpowers/plans/2026-07-09-m0-bare-metal-boot.md`.
 > M1 implementation plan (complete, merged): `docs/superpowers/plans/2026-07-10-m1-context-switch.md`.
@@ -27,7 +27,7 @@
 | M3 | Blocking primitives — delay(ticks), semaphore, mutex | ✅ done, merged |
 | M4 | Priority inheritance — build inversion, then fix (**the payoff**) | ✅ done, merged |
 | M5 | Real-time layer — periodic tasks + deadline-miss counter (RMS capstone) | ✅ done, merged (`rtos/`: `block_until()` extracted from `delay()`, new `rtos.{h,c}` — `periodic_task_create()`/`task_wait_for_release()`/`periodic_get_miss_count()`/`rms_check()`, all integer-arithmetic, no `systick.c` changes needed; `tests/m5_test.sh` proves RMS reports SCHEDULABLE while a deliberately-overrunning task still racks up real deadline misses — the static check and the runtime counter check two different things on purpose) |
-| M6 | Stretch — adaptive agent (revive xv6 RL-bandit) OR add EDF + compare | ⏳ needs its own design pass first |
+| M6 | EDF vs RMS comparison — `SCHED=RMS`/`EDF` compile-time flag, workload utilization sweep, deadline-miss counter as proof | ✅ done, merged |
 | M7 | Stretch — migrate QEMU → real Raspberry Pi Pico | ⏳ needs its own design pass first |
 
 ## Key Decisions
@@ -71,6 +71,7 @@
 - **A fix subagent once committed directly to `master`** (not its assigned worktree) because the target file (`rtos-whiteboard.md`) lives outside `rtos/`, and included the `Co-Authored-By: Claude` trailer the user had already asked to omit — caught and amended after the fact. Lesson: when dispatching a subagent to edit files that might live outside the current worktree's tracked subtree, explicitly state which branch/location to commit to and restate the no-co-author-trailer convention in the dispatch prompt — don't assume a fresh subagent inherits project conventions it was never told.
 - **CI on GitHub Actions is genuinely cheaper on Linux than local macOS dev was.** Ubuntu's `apt-get install gcc-arm-none-eabi qemu-system-arm` gives a complete toolchain (with newlib) in one step — no toolchain-gap surprises like the sibling FreeRTOS-QEMU project hit locally on macOS (see that project's CLAUDE.md). Verify CI actually passes by watching the run (`gh run watch --exit-status`), not just by confirming the workflow file parses/uploads.
 - **Public-repo readiness needs a human-facing `README.md` distinct from `CLAUDE.md`.** `CLAUDE.md`/`rtos-whiteboard.md` are internal working docs (session-continuity, decision log) — a recruiter or engineer clicking the GitHub link wants a short "what is this, how do I build/run it" doc up front, with a CI badge as a cheap trust signal.
+- **M6's WCET-tracking lesson** — initial `busy_wait()` design used wall-clock tick_count, masking preemption intervals so RMS-vs-EDF runtime misses never surfaced; fixed by adding `tcb->remaining_wcet_ticks`, decremented only by SysTick_Handler when a task is current. Separately: 'highest-priority never misses' is RMS-specific (fixed priority); EDF's dynamic reordering lets both tasks accumulate misses under overload, confirmed in workload-4 test.
 
 ## Next Steps
 

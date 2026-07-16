@@ -134,4 +134,44 @@ Notes:
 
 ---
 
+## §9: EDF vs RMS Comparison (M6)
+
+EDF (Earliest-Deadline-First) is a **dynamic**-priority scheduler: instead of
+a fixed priority assigned at task-creation time (RMS), the task with the
+nearest absolute deadline always runs next. This project adds it as a
+second, compile-time-selectable ready-queue policy (`make SCHED=EDF`)
+alongside the existing RMS priority array (`make SCHED=RMS`, the default).
+
+**Schedulability bounds:**
+- RMS (fixed priority): `U <= N(2^(1/N) - 1)` — for N=2 tasks, `~0.8284`.
+- EDF (dynamic priority): `U <= 1.0` — exact (necessary AND sufficient) when
+  every task's deadline equals its period, which this demo uses throughout
+  (unlike M5's constrained-deadline demo).
+
+**Results** (two periodic tasks, PERIOD_A=50, PERIOD_B=80 ticks, deadline=period):
+
+| Workload | U | RMS verdict | RMS runtime | EDF verdict | EDF runtime |
+|---|---|---|---|---|---|
+| 1 (low) | 0.51 | SCHEDULABLE | 0 misses | SCHEDULABLE | 0 misses |
+| 2 (medium) | 0.92 | NOT SCHEDULABLE | TaskB misses | SCHEDULABLE | 0 misses |
+| 3 (high) | 0.955 | NOT SCHEDULABLE | TaskB misses | SCHEDULABLE | 0 misses |
+| 4 (overload) | 1.1625 | NOT SCHEDULABLE | TaskB misses | NOT SCHEDULABLE | misses |
+
+Workloads 2 and 3 are the headline result: the exact same task set is
+provably NOT SCHEDULABLE under RMS (and genuinely misses deadlines at
+runtime, confirmed by hand via response-time analysis) while EDF schedules
+it cleanly — EDF's dynamic priority reordering achieves strictly better
+utilization than any fixed-priority assignment can, up to the full `U<=1`
+ceiling. Workload 4 shows EDF isn't magic: above `U=1`, no scheduler of any
+kind can meet every deadline (total demand exceeds available CPU capacity),
+and EDF misses deadlines too.
+
+**Caveat carried over from RMS (§4):** `edf_check()`'s `U<=1` test is only
+an *exact* schedulability proof because this demo uses implicit deadlines
+(`D=T`). With constrained deadlines (`D<T`, as M5's demo used), `U<=1` is
+still necessary but not automatically sufficient — the runtime deadline-miss
+counter remains the ground truth for that stricter case.
+
+---
+
 *Next step: whiteboard Q&A on any section above, then scope the project (§7) before writing a plan.*
