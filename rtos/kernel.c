@@ -120,6 +120,7 @@ tcb_t *task_create(void (*entry)(void), uint8_t priority) {
     tcb->deadline_ticks = 0;
     tcb->wake_tick = 0;
     tcb->abs_deadline = 0;
+    tcb->remaining_wcet_ticks = 0;
 
     ready_enqueue(tcb);   /* sets state = TASK_READY, appends to the tail */
 

@@ -34,8 +34,16 @@ static int highest_ready_priority(void) {
 
 void scheduler_next(void) {
     if (current_tcb != 0 && current_tcb->state == TASK_RUNNING) {
+        /* still runnable, just preempted (by SysTick or an explicit yield):
+           go back to the tail of its own priority level. */
         ready_enqueue(current_tcb);
     }
+    /* if current_tcb->state == TASK_BLOCKED, the blocking primitive that
+       put it there already removed it from ready_queue and changed its
+       state before pending PendSV -- nothing to do here for that case.
+       (current_tcb == 0 only on the very first call, from scheduler_start
+       before any task has ever run -- also nothing to do.) */
+
     int p = highest_ready_priority();
     current_tcb = ready_queue[p];
     ready_remove(current_tcb);
