@@ -21,7 +21,11 @@ typedef struct tcb {
 } tcb_t;
 
 extern tcb_t *current_tcb;
+#ifdef SCHED_EDF
+tcb_t *ready_dequeue_min_deadline(void);
+#else
 extern tcb_t *ready_queue[MAX_PRIORITY_LEVELS];
+#endif
 extern volatile uint32_t tick_count;
 
 void kernel_init(void);

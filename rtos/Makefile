@@ -1,6 +1,15 @@
 CROSS   = arm-none-eabi-
 CC      = $(CROSS)gcc
-CFLAGS  = -mcpu=cortex-m3 -mthumb -nostdlib -nostartfiles -ffreestanding -Wall -Wextra -O0 -g
+
+SCHED    ?= RMS
+WORKLOAD ?= 1
+
+SCHED_FLAG =
+ifeq ($(SCHED),EDF)
+SCHED_FLAG = -DSCHED_EDF=1
+endif
+
+CFLAGS  = -mcpu=cortex-m3 -mthumb -nostdlib -nostartfiles -ffreestanding -Wall -Wextra -O0 -g $(SCHED_FLAG) -DWORKLOAD=$(WORKLOAD)
 LDFLAGS = -T linker.ld -nostdlib -nostartfiles
 
 OBJS = boot.o pendsv.o kernel.o scheduler.o systick.o sync.o rtos.o uart.o main.o

@@ -13,22 +13,44 @@ static uint32_t task_stacks[MAX_TASKS][TASK_STACK_WORDS] __attribute__((aligned(
 static int num_tasks = 0;
 
 tcb_t *current_tcb = 0;
+
+#ifdef SCHED_EDF
+static tcb_t *ready_list = 0;   /* flat, unordered list of ready TCBs */
+
+void ready_enqueue(tcb_t *tcb) {
+    tcb->state = TASK_READY;
+    tcb->next = ready_list;
+    ready_list = tcb;
+}
+
+void ready_remove(tcb_t *tcb) {
+    tcb_t **pp = &ready_list;
+    while (*pp != 0 && *pp != tcb) {
+        pp = &(*pp)->next;
+    }
+    if (*pp == tcb) {
+        *pp = tcb->next;
+        tcb->next = 0;
+    }
+}
+
+tcb_t *ready_dequeue_min_deadline(void) {
+    tcb_t *best = 0;
+    for (tcb_t *t = ready_list; t != 0; t = t->next) {
+        if (best == 0 || t->abs_deadline < best->abs_deadline ||
+            (t->abs_deadline == best->abs_deadline && t->id < best->id)) {
+            best = t;
+        }
+    }
+    /* unreachable if best == 0: the idle task's abs_deadline is set to
+       0xFFFFFFFF in scheduler_init() and it never blocks, so it is always
+       present in ready_list as a fallback -- same invariant as the RMS
+       branch's idle-priority-slot guarantee. */
+    ready_remove(best);
+    return best;
+}
+#else
 tcb_t *ready_queue[MAX_PRIORITY_LEVELS] = {0};
-
-void kernel_init(void) {
-    SCB_SHPR3 |= (0xFFUL << 16);
-}
-
-uint32_t critical_enter(void) {
-    uint32_t primask;
-    __asm__ volatile ("mrs %0, primask" : "=r" (primask));
-    __asm__ volatile ("cpsid i");
-    return primask;
-}
-
-void critical_exit(uint32_t saved_primask) {
-    __asm__ volatile ("msr primask, %0" : : "r" (saved_primask));
-}
 
 void ready_enqueue(tcb_t *tcb) {
     tcb->state = TASK_READY;
@@ -53,6 +75,22 @@ void ready_remove(tcb_t *tcb) {
         *pp = tcb->next;
         tcb->next = 0;
     }
+}
+#endif
+
+void kernel_init(void) {
+    SCB_SHPR3 |= (0xFFUL << 16);
+}
+
+uint32_t critical_enter(void) {
+    uint32_t primask;
+    __asm__ volatile ("mrs %0, primask" : "=r" (primask));
+    __asm__ volatile ("cpsid i");
+    return primask;
+}
+
+void critical_exit(uint32_t saved_primask) {
+    __asm__ volatile ("msr primask, %0" : : "r" (saved_primask));
 }
 
 tcb_t *task_create(void (*entry)(void), uint8_t priority) {
