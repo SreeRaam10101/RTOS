@@ -23,5 +23,5 @@ jobs:
           make clean
           make
 
-      - name: Run latest milestone test (M5 -- see tests/README.md for why only the latest test is expected to pass)
-        run: ./tests/m5_test.sh
+      - name: Run latest milestone test (M6 -- see tests/README.md for why only the latest test is expected to pass)
+        run: ./tests/m6_test.sh
