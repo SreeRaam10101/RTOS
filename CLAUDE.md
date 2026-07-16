@@ -17,7 +17,7 @@
 
 **Companion project:** `/Users/raam/Desktop/Notes/LLM/FreeRTOS-QEMU` (also public, own CLAUDE.md) — gets the *real* FreeRTOS kernel running on the same QEMU board, proving the complementary "work inside a production kernel" skill. Both bootstrap+demo tasks complete, final-reviewed, and CI'd there too.
 
-**No open next step is queued for THIS project** — M6 (adaptive agent / EDF comparison) and M7 (Pico hardware port) are explicitly out of scope for the current spec and would need their own brainstorming/design pass before any implementation plan. The active roadmap item right now is **Zephyr** (a second production RTOS, in the sibling `FreeRTOS-QEMU` repo or a new one), deferred until the FreeRTOS work was done.
+**No open next step is queued for THIS project** — M6 (EDF vs RMS comparison) is complete and merged; M7 (Pico hardware port) and the adaptive RL-bandit agent (a separate stretch idea deferred during M6's brainstorming, not part of M6 itself) are explicitly out of scope and would need their own brainstorming/design pass before any implementation plan. The active roadmap item right now is **Zephyr** (a second production RTOS, in the sibling `FreeRTOS-QEMU` repo or a new one), deferred until the FreeRTOS work was done.
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
@@ -36,7 +36,7 @@
 |----------|--------|
 | **QEMU-emulated Cortex-M**, no physical board (yet) | Build solid software/QEMU experience first; mirrors xv6+QEMU workflow |
 | **Option 2: from-scratch kernel** (not scheduler-on-a-base) | Deepest top-to-bottom learning; user owns every line |
-| **RMS capstone — confirmed** | Hand-provable bound cements "why real-time works"; EDF excluded entirely (not even M6) |
+| **RMS capstone — confirmed** | Hand-provable bound cements "why real-time works"; M0–M5 scope chose RMS only; EDF later added in M6 for comparison |
 | Cortex-M target (not x86-64) | No MMU, HW auto-stacks registers, clean NVIC → energy on scheduling logic |
 | Hardware = later/cheap/optional (Pico ~$6 + probe ~$12) | Not a prerequisite; QEMU-first decision stands |
 | **QEMU board: `mps2-an385`** (Cortex-M3) | Better documented / actively maintained in QEMU than `lm3s6965evb` |
@@ -75,8 +75,8 @@
 
 ## Next Steps
 
-The M0–M5 spec is complete and the repo is public with passing CI — there is no queued implementation work on THIS project. If the user wants to continue here specifically:
-1. M6 (adaptive RL-bandit agent, or EDF-vs-RMS comparison) and M7 (Raspberry Pi Pico hardware port) both need their own `brainstorming` → spec → `writing-plans` cycle first — they were explicitly out of scope for the approved M0–M5 spec, not just "not started yet."
+M6 (EDF vs RMS comparison) is complete and merged. If the user wants to continue here specifically, next work items are:
+1. M7 (Raspberry Pi Pico hardware port) and the adaptive RL-bandit stretch idea (a separate, still-unscoped future stretch explicitly deferred during M6's brainstorming, not folded into M6 itself) both need their own `brainstorming` → spec → `writing-plans` cycle first — they are explicitly out of scope for both the M0–M5 and M6 specs, not just "not started yet."
 2. Toolchain is fully installed: `qemu-system-arm`, `arm-none-eabi-gcc`, `arm-none-eabi-gdb` all confirmed working since M0.
 3. The worktree → subagent-driven-development → final review → merge pattern used for M0–M5 worked well each time and is the natural template for whatever comes next.
 
