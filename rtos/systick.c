@@ -27,6 +27,9 @@ void systick_init(void) {
 void SysTick_Handler(void) {
     tick_count++;
     delay_tick_check();
+    if (current_tcb != 0 && current_tcb->remaining_wcet_ticks > 0) {
+        current_tcb->remaining_wcet_ticks--;
+    }
     /* Pend a switch on every tick, unconditionally. If the top ready
        priority has only one task, scheduler_next()'s rotation is a no-op
        and this is a cheap same-task resume; if there are several, this is

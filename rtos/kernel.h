@@ -17,6 +17,7 @@ typedef struct tcb {
     uint32_t deadline_ticks;
     uint32_t wake_tick;
     uint32_t abs_deadline;
+    volatile uint32_t remaining_wcet_ticks;   /* CPU ticks left to simulate; decremented by SysTick, not by the task itself */
     struct tcb *next;
 } tcb_t;
 
