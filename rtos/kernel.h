@@ -12,14 +12,21 @@ typedef struct tcb {
     task_state_t state;
     uint8_t priority;
     uint8_t base_priority;
+    uint8_t id;
     uint32_t period_ticks;
     uint32_t deadline_ticks;
     uint32_t wake_tick;
+    uint32_t abs_deadline;
+    volatile uint32_t remaining_wcet_ticks;   /* CPU ticks left to simulate; decremented by SysTick, not by the task itself */
     struct tcb *next;
 } tcb_t;
 
 extern tcb_t *current_tcb;
+#ifdef SCHED_EDF
+tcb_t *ready_dequeue_min_deadline(void);
+#else
 extern tcb_t *ready_queue[MAX_PRIORITY_LEVELS];
+#endif
 extern volatile uint32_t tick_count;
 
 void kernel_init(void);

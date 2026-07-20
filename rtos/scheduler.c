@@ -10,9 +10,19 @@ static void idle_entry(void) {
 }
 
 void scheduler_init(void) {
-    task_create(idle_entry, IDLE_PRIORITY);
+    tcb_t *idle = task_create(idle_entry, IDLE_PRIORITY);
+    idle->abs_deadline = 0xFFFFFFFF;  /* EDF: always picked last; unused field under RMS builds */
 }
 
+#ifdef SCHED_EDF
+void scheduler_next(void) {
+    if (current_tcb != 0 && current_tcb->state == TASK_RUNNING) {
+        ready_enqueue(current_tcb);
+    }
+    current_tcb = ready_dequeue_min_deadline();
+    current_tcb->state = TASK_RUNNING;
+}
+#else
 static int highest_ready_priority(void) {
     for (int p = 0; p < MAX_PRIORITY_LEVELS; p++) {
         if (ready_queue[p] != 0) {
@@ -39,3 +49,4 @@ void scheduler_next(void) {
     ready_remove(current_tcb);
     current_tcb->state = TASK_RUNNING;
 }
+#endif

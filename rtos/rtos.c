@@ -20,6 +20,9 @@ static int num_periodic_tasks = 0;
 static uint32_t last_u_scaled = 0;
 static uint32_t last_bound_scaled = 0;
 
+static uint32_t last_edf_u_scaled = 0;
+static uint32_t last_edf_bound_scaled = 0;
+
 static periodic_info_t *find_periodic_info(tcb_t *tcb) {
     for (int i = 0; i < num_periodic_tasks; i++) {
         if (periodic_tasks[i].tcb == tcb) {
@@ -67,6 +70,7 @@ void task_wait_for_release(void) {
 
     uint32_t next = info->next_release;
     info->next_release += info->period_ticks;
+    current_tcb->abs_deadline = next + info->deadline_ticks;  /* used by EDF only; harmless under RMS builds */
     block_until(next);
 }
 
@@ -118,4 +122,33 @@ uint32_t rms_get_utilization_x10000(void) {
 
 uint32_t rms_get_bound_x10000(void) {
     return last_bound_scaled;
+}
+
+/*
+ * edf_check() implements the classic EDF utilization bound (U <= 1.0),
+ * which is necessary AND sufficient when every task's deadline equals its
+ * period (implicit deadlines, D=T) -- true for every workload in this
+ * milestone's demo, unlike M5's constrained-deadline (D<T) demo. This is
+ * why, unlike rms_check(), this bound alone is a complete schedulability
+ * proof for this project's M6 workloads -- no separate runtime caveat is
+ * needed the way rms_check()'s doc comment above requires one.
+ */
+int edf_check(void) {
+    uint32_t u_scaled = 0;
+    for (int i = 0; i < num_periodic_tasks; i++) {
+        u_scaled += (periodic_tasks[i].wcet_ticks * 10000UL) / periodic_tasks[i].period_ticks;
+    }
+
+    last_edf_u_scaled = u_scaled;
+    last_edf_bound_scaled = 10000;
+
+    return (u_scaled <= 10000) ? 1 : 0;
+}
+
+uint32_t edf_get_utilization_x10000(void) {
+    return last_edf_u_scaled;
+}
+
+uint32_t edf_get_bound_x10000(void) {
+    return last_edf_bound_scaled;
 }

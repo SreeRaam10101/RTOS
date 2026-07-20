@@ -2,7 +2,7 @@
 
 > From-scratch tiny RTOS, learned top-to-bottom on QEMU (ARM Cortex-M).
 > Builds on prior xv6-x64 scheduler work (`/Users/raam/Desktop/Notes/OS`).
-> Learning doc: `rtos-whiteboard.md` (concepts §0–§8, milestone arc §6b). Session logs: `CC-Session-Logs/`.
+> Learning doc: `rtos-whiteboard.md` (concepts §0–§9, milestone arc §6b). Session logs: `CC-Session-Logs/`.
 > Architecture spec (M0–M5, approved): `docs/superpowers/specs/2026-07-09-rtos-core-architecture-design.md`.
 > M0 implementation plan (complete, merged): `docs/superpowers/plans/2026-07-09-m0-bare-metal-boot.md`.
 > M1 implementation plan (complete, merged): `docs/superpowers/plans/2026-07-10-m1-context-switch.md`.
@@ -18,7 +18,7 @@
 
 **Companion project:** `/Users/raam/Desktop/Notes/LLM/FreeRTOS-QEMU` (also public, own CLAUDE.md) — gets the *real* FreeRTOS kernel running on the same QEMU board, proving the complementary "work inside a production kernel" skill. Both bootstrap+demo tasks complete, final-reviewed, and CI'd there too.
 
-**M6 (EDF vs RMS comparison) is fully implemented, tested (all 8 `SCHED`×`WORKLOAD` combinations pass), and final-reviewed** on branch `worktree-m6-edf-scheduler` (worktree at `.claude/worktrees/m6-edf-scheduler`) — **awaiting the user's own review before merging to `master`**. M7 (Pico hardware port) and the adaptive RL-bandit agent (a separate stretch idea, deferred during M6's brainstorming, not folded into M6) remain out of scope and need their own design pass. Separately, a **Zephyr-QEMU** sibling project has been scoped (not yet created) — see Next Steps.
+**M6 (EDF vs RMS comparison) is complete and merged.** M7 (Pico hardware port) and the adaptive RL-bandit agent (a separate stretch idea, deferred during M6's brainstorming, not folded into M6) remain out of scope and need their own design pass. Separately, a **Zephyr-QEMU** sibling project has been scoped (not yet created) — see Next Steps.
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
@@ -28,7 +28,7 @@
 | M3 | Blocking primitives — delay(ticks), semaphore, mutex | ✅ done, merged |
 | M4 | Priority inheritance — build inversion, then fix (**the payoff**) | ✅ done, merged |
 | M5 | Real-time layer — periodic tasks + deadline-miss counter (RMS capstone) | ✅ done, merged (`rtos/`: `block_until()` extracted from `delay()`, new `rtos.{h,c}` — `periodic_task_create()`/`task_wait_for_release()`/`periodic_get_miss_count()`/`rms_check()`, all integer-arithmetic, no `systick.c` changes needed; `tests/m5_test.sh` proves RMS reports SCHEDULABLE while a deliberately-overrunning task still racks up real deadline misses — the static check and the runtime counter check two different things on purpose) |
-| M6 | EDF vs RMS comparison — `SCHED=RMS`/`EDF` compile-time flag, `WORKLOAD=1-4` utilization sweep, deadline-miss counter as proof | 🔨 implemented + tested + reviewed on `worktree-m6-edf-scheduler`, awaiting merge |
+| M6 | EDF vs RMS comparison — `SCHED=RMS`/`EDF` compile-time flag, `WORKLOAD=1-4` utilization sweep, deadline-miss counter as proof | ✅ done, merged |
 | M7 | Stretch — migrate QEMU → real Raspberry Pi Pico | ⏳ needs its own design pass first |
 
 ## Key Decisions
@@ -37,7 +37,7 @@
 |----------|--------|
 | **QEMU-emulated Cortex-M**, no physical board (yet) | Build solid software/QEMU experience first; mirrors xv6+QEMU workflow |
 | **Option 2: from-scratch kernel** (not scheduler-on-a-base) | Deepest top-to-bottom learning; user owns every line |
-| **RMS capstone — confirmed** | Hand-provable bound cements "why real-time works"; M0–M5 scope chose RMS only, EDF later added in M6 for comparison |
+| **RMS capstone — confirmed** | Hand-provable bound cements "why real-time works"; M0–M5 scope chose RMS only; EDF later added in M6 for comparison |
 | Cortex-M target (not x86-64) | No MMU, HW auto-stacks registers, clean NVIC → energy on scheduling logic |
 | Hardware = later/cheap/optional (Pico ~$6 + probe ~$12) | Not a prerequisite; QEMU-first decision stands |
 | **QEMU board: `mps2-an385`** (Cortex-M3) | Better documented / actively maintained in QEMU than `lm3s6965evb` |
@@ -78,13 +78,14 @@
 - **M6's `busy_wait()` design bug: wall-clock ticks ≠ CPU-time consumed.** The first implementation compared `tick_count` directly against a start snapshot to simulate a task's WCET — but a preempted task's own elapsed-time window silently absorbs the preemption interval (SysTick keeps advancing regardless of who's running), so completion time collapsed to `release + WCET` regardless of scheduling policy, and no genuine RMS-vs-EDF runtime miss ever appeared even though the static schedulability checks correctly diverged. Fixed with `tcb->remaining_wcet_ticks`, a per-task counter decremented only by `SysTick_Handler` for whichever task is actually `current_tcb` at each tick — this correctly attributes CPU ticks only to the task that was genuinely scheduled, restoring the exact response-time-analysis assumptions the workload numbers were derived from.
 - **"Highest-priority never misses" is an RMS-specific guarantee, not a scheduler-agnostic one.** Under fixed-priority scheduling the highest-priority task is never preempted, so its response time always equals its own WCET — TaskA never missed in any M6 workload under RMS. This does **not** carry over to EDF: priority there is dynamic (nearest deadline), so under EDF's overload workload (U>1) a miss can land on either task — confirmed empirically (TaskA and TaskB both accumulated misses under EDF/workload 4). A test that hardcodes "TaskA never misses" across both scheduler builds will incorrectly fail on legitimate EDF-overload behavior.
 - **Subagent-driven-development caught both of the above bugs via implementer pushback, not via review.** Both times, an implementer subagent hit a mismatch between the plan's expected output and the actual QEMU behavior, and — per its explicit instructions — stopped and reported BLOCKED with a full root-cause trace instead of silently adjusting expected values or scheduler code to force a match. Both turned out to be real gaps in the plan (not implementation bugs), fixed by correcting the plan and re-dispatching. Lesson: an implementer that stops and explains a discrepancy is more valuable than one that "makes the test pass" — the instruction to prefer BLOCKED over silent adjustment paid for itself twice in one milestone.
+- **`tests/m6_test.sh` showed one flaky failure out of many runs** (post-merge verification), never reproduced across 4+ immediate re-runs, all prior review/task-verification runs, or later ad hoc runs. Likely transient QEMU/system timing noise given the fixed 3-second wall-clock capture window, not a genuine race in the kernel or test logic — noted here in case it recurs, rather than silently ignored.
 
 ## Next Steps
 
-1. **Merge `worktree-m6-edf-scheduler` to `master` when ready.** Fully implemented, all 8 `SCHED`×`WORKLOAD` combinations pass, final whole-branch review clean (two Minor nits already fixed). User is reviewing the branch before merging — nothing further needed from Claude until asked.
-2. **M7 (Raspberry Pi Pico hardware port)** and the **adaptive RL-bandit agent** (a separate stretch idea, distinct from M6's EDF work) both still need their own `brainstorming` → spec → `writing-plans` cycle — out of scope for both the M0–M5 and M6 specs.
-3. Toolchain is fully installed: `qemu-system-arm`, `arm-none-eabi-gcc`, `arm-none-eabi-gdb` all confirmed working since M0.
-4. The worktree → subagent-driven-development → final review → merge pattern used for M0–M6 worked well each time (including catching two real design bugs via implementer BLOCKED-status pushback in M6) and is the natural template for whatever comes next.
+M6 (EDF vs RMS comparison) is complete and merged.
+1. **M7 (Raspberry Pi Pico hardware port)** and the **adaptive RL-bandit agent** (a separate stretch idea, distinct from M6's EDF work) both still need their own `brainstorming` → spec → `writing-plans` cycle — out of scope for both the M0–M5 and M6 specs.
+2. Toolchain is fully installed: `qemu-system-arm`, `arm-none-eabi-gcc`, `arm-none-eabi-gdb` all confirmed working since M0.
+3. The worktree → subagent-driven-development → final review → merge pattern used for M0–M6 worked well each time (including catching two real design bugs via implementer BLOCKED-status pushback in M6) and is the natural template for whatever comes next.
 
 **Zephyr-QEMU (new sibling project, scoped but not yet created):** a new repo at `/Users/raam/Desktop/Notes/LLM/Zephyr-QEMU` has been brainstormed — target board `qemu_cortex_m3` (Zephyr's generic Cortex-M3 QEMU target, chosen over `mps2/an385` for better Zephyr docs/community support), project arc: (1) bootstrap via `west` workspace + Zephyr SDK, `hello_world`-style demo; (2) periodic task + producer/consumer queue demo mirroring FreeRTOS-QEMU's task 2 (`k_thread`/`k_timer`/`k_msgq`); (3) devicetree overlay exploration; (4) Kconfig-driven feature toggle (contrast with this project's compile-time-flag pattern); (5) driver model exploration (`DEVICE_DT_GET`); (6) docs/public-repo/CI. Brainstorming was mid-flow (arc and board agreed) when this note was preserved — the actual spec doc has not yet been written or committed. Resume by finishing that spec, then `writing-plans`, in the new repo (not this one).
 

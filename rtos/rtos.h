@@ -14,4 +14,8 @@ int rms_check(void);
 uint32_t rms_get_utilization_x10000(void);
 uint32_t rms_get_bound_x10000(void);
 
+int edf_check(void);
+uint32_t edf_get_utilization_x10000(void);
+uint32_t edf_get_bound_x10000(void);
+
 #endif
