@@ -23,6 +23,16 @@ _vectors:
     .word PendSV_Handler     /* PendSV */
     .word SysTick_Handler    /* SysTick */
 
+    .word Default_Handler    /* IRQ0 */
+    .word Default_Handler    /* IRQ1 */
+    .word Default_Handler    /* IRQ2 */
+    .word Default_Handler    /* IRQ3 */
+    .word Default_Handler    /* IRQ4 */
+    .word Default_Handler    /* IRQ5 */
+    .word Default_Handler    /* IRQ6 */
+    .word Default_Handler    /* IRQ7 */
+    .word Timer0_IRQHandler  /* IRQ8 -- CMSDK Timer0, used as the interrupt-driven synthetic ADC source (see adc.c) */
+
     .section .text
     .thumb_func
     .global Reset_Handler

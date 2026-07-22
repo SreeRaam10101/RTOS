@@ -12,8 +12,8 @@ endif
 CFLAGS  = -mcpu=cortex-m3 -mthumb -nostdlib -nostartfiles -ffreestanding -Wall -Wextra -O0 -g $(SCHED_FLAG) -DWORKLOAD=$(WORKLOAD)
 LDFLAGS = -T linker.ld -nostdlib -nostartfiles
 
-OBJS = boot.o pendsv.o kernel.o scheduler.o systick.o sync.o rtos.o uart.o queue.o main.o
-OBJS_NO_INHERIT = boot.o pendsv.o kernel.o scheduler.o systick.o sync_no_inherit.o rtos.o uart.o queue.o main.o
+OBJS = boot.o pendsv.o kernel.o scheduler.o systick.o sync.o rtos.o uart.o queue.o adc.o main.o
+OBJS_NO_INHERIT = boot.o pendsv.o kernel.o scheduler.o systick.o sync_no_inherit.o rtos.o uart.o queue.o adc.o main.o
 
 all: build/kernel.elf build/kernel_no_inherit.elf
 
