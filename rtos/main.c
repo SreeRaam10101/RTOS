@@ -1,61 +1,89 @@
 #include <stdint.h>
 #include "kernel.h"
 #include "uart.h"
-#include "rtos.h"
+#include "queue.h"
+#include "adc.h"
+#include "gpio.h"
 
-#define PERIOD_A 50
-#define PERIOD_B 80
+#define SAMPLER_PRIORITY  0
+#define FILTER_PRIORITY   1
+#define REPORTER_PRIORITY 2
 
-#if WORKLOAD == 1
-#define WCET_A 13
-#define WCET_B 20
-#elif WORKLOAD == 2
-#define WCET_A 21
-#define WCET_B 40
-#elif WORKLOAD == 3
-#define WCET_A 24
-#define WCET_B 38
-#elif WORKLOAD == 4
-#define WCET_A 30
-#define WCET_B 45
-#else
-#error "WORKLOAD must be 1, 2, 3, or 4 -- see docs/superpowers/specs/2026-07-15-m6-edf-rms-comparison-design.md"
-#endif
+#define SAMPLE_Q_CAPACITY 8
+#define FILTER_Q_CAPACITY 8
+#define REPORT_Q_CAPACITY 8
 
-static void busy_wait(uint32_t work_ticks) {
-    /* Spins until the SCHEDULER (via SysTick_Handler) has decremented this
-       task's own remaining_wcet_ticks to zero -- i.e. until this task has
-       actually held the CPU for work_ticks ticks, not merely until
-       work_ticks of wall-clock time has passed. A preempted task's counter
-       does not move while a higher-priority task runs, so this correctly
-       simulates WCET consumption under preemption (see kernel.h/systick.c
-       changes above). */
-    current_tcb->remaining_wcet_ticks = work_ticks;
-    while (current_tcb->remaining_wcet_ticks > 0) {
-        /* simulate fixed-length periodic work */
+#define MOVING_AVG_WINDOW 3
+#define ALERT_THRESHOLD   35
+
+static uint16_t sample_q_buf[SAMPLE_Q_CAPACITY];
+static uint16_t filter_q_buf[FILTER_Q_CAPACITY];
+static uint32_t report_q_buf[REPORT_Q_CAPACITY];
+
+static queue_t sample_q;
+static queue_t filter_q;
+static queue_t report_q;
+
+static void sampler_entry(void) {
+    for (;;) {
+        uint16_t v;
+        queue_pop(&sample_q, &v);    /* blocks until Timer0_IRQHandler delivers a sample */
+        queue_push(&filter_q, &v);
     }
 }
 
-static void task_a_entry(void) {
+static void filter_entry(void) {
+    uint16_t history[MOVING_AVG_WINDOW] = { 0, 0, 0 };
+    int hist_idx = 0;
+
     for (;;) {
-        task_wait_for_release();
-        busy_wait(WCET_A);
-        uart_puts("PeriodicA: tick=");
-        uart_put_uint32(tick_count);
-        uart_puts(" misses=");
-        uart_put_uint32(periodic_get_miss_count(current_tcb));
-        uart_puts("\n");
+        uint16_t v;
+        queue_pop(&filter_q, &v);
+
+        history[hist_idx] = v;
+        hist_idx = (hist_idx + 1) % MOVING_AVG_WINDOW;
+
+        uint32_t sum = 0;
+        for (int i = 0; i < MOVING_AVG_WINDOW; i++) {
+            sum += history[i];
+        }
+        uint32_t avg = sum / MOVING_AVG_WINDOW;
+
+        if (avg > ALERT_THRESHOLD) {
+            /* Alert branches directly out of Filter, not queued through
+               Reporter, so its latency is bounded by "time since threshold
+               detected" rather than diluted by Reporter's lower scheduling
+               priority. QEMU cannot confirm the GPIO write lands (see
+               gpio.c) so the bound is proven here in firmware, by logging
+               tick_count immediately before and after the write. */
+            uint32_t detect_tick = tick_count;
+            gpio_set_alert_pin(1);
+            uint32_t gpio_tick = tick_count;
+            uart_puts("ALERT: detect_tick=");
+            uart_put_uint32(detect_tick);
+            uart_puts(" gpio_tick=");
+            uart_put_uint32(gpio_tick);
+            uart_puts("\n");
+        } else {
+            gpio_set_alert_pin(0);
+        }
+
+        queue_push(&report_q, &avg);
     }
 }
 
-static void task_b_entry(void) {
+static void reporter_entry(void) {
     for (;;) {
-        task_wait_for_release();
-        busy_wait(WCET_B);
-        uart_puts("PeriodicB: tick=");
-        uart_put_uint32(tick_count);
-        uart_puts(" misses=");
-        uart_put_uint32(periodic_get_miss_count(current_tcb));
+        uint32_t avg;
+        queue_pop(&report_q, &avg);
+        uart_puts("Report: avg=");
+        uart_put_uint32(avg);
+        uart_puts(" overflow_sample=");
+        uart_put_uint32(sample_q.overflow_count);
+        uart_puts(" overflow_filter=");
+        uart_put_uint32(filter_q.overflow_count);
+        uart_puts(" overflow_report=");
+        uart_put_uint32(report_q.overflow_count);
         uart_puts("\n");
     }
 }
@@ -65,31 +93,17 @@ int main(void) {
     kernel_init();
     scheduler_init();
 
-    /* deadline == period (implicit deadlines) for this comparison -- unlike
-       M5's constrained-deadline demo -- so edf_check()'s U<=1 bound is
-       exactly necessary-and-sufficient. See rtos.c's edf_check() doc
-       comment and the M6 spec. */
-    periodic_task_create(task_a_entry, 0, PERIOD_A, PERIOD_A, WCET_A);
-    periodic_task_create(task_b_entry, 1, PERIOD_B, PERIOD_B, WCET_B);
+    queue_init(&sample_q, sample_q_buf, SAMPLE_Q_CAPACITY, sizeof(uint16_t));
+    queue_init(&filter_q, filter_q_buf, FILTER_Q_CAPACITY, sizeof(uint16_t));
+    queue_init(&report_q, report_q_buf, REPORT_Q_CAPACITY, sizeof(uint32_t));
 
-#ifdef SCHED_EDF
-    int schedulable = edf_check();
-    uart_puts("EDF check: U=");
-    uart_put_uint32(edf_get_utilization_x10000());
-    uart_puts(" bound=");
-    uart_put_uint32(edf_get_bound_x10000());
-    uart_puts(schedulable ? " => SCHEDULABLE\n" : " => NOT SCHEDULABLE\n");
-#else
-    int schedulable = rms_check();
-    uart_puts("RMS check: U=");
-    uart_put_uint32(rms_get_utilization_x10000());
-    uart_puts(" bound=");
-    uart_put_uint32(rms_get_bound_x10000());
-    uart_puts(schedulable ? " => SCHEDULABLE\n" : " => NOT SCHEDULABLE\n");
-#endif
+    task_create(sampler_entry, SAMPLER_PRIORITY);
+    task_create(filter_entry, FILTER_PRIORITY);
+    task_create(reporter_entry, REPORTER_PRIORITY);
 
+    adc_init(&sample_q);
     systick_init();
     scheduler_start();
 
-    for (;;) { }  /* unreachable */
+    for (;;) { }   /* unreachable */
 }
