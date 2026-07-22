@@ -9,8 +9,8 @@ This project grows one kernel by replacing `main.c` at every milestone: each
 milestone boots and demos a new capability, then the next milestone's demo
 overwrites it. So at any given commit, only the **latest** milestone's test
 script is expected to pass against the current `rtos/build/kernel.elf`.
-Right now that's `tests/m6_test.sh`. `tests/m0_test.sh` through
-`tests/m5_test.sh` failing here is expected, not a regression.
+Right now that's `tests/m7_test.sh`. `tests/m0_test.sh` through
+`tests/m6_test.sh` failing here is expected, not a regression.
 
 To verify an earlier milestone's test:
 1. `git log --oneline` to find that milestone's merge commit.
@@ -29,3 +29,4 @@ To verify an earlier milestone's test:
 | `m4_test.sh` | M4 | Priority inheritance — build inversion, then fix |
 | `m5_test.sh` | M5 | Real-time layer — periodic tasks + deadline-miss counter (RMS capstone) |
 | `m6_test.sh` | M6 | EDF + RMS comparison — verify both schedulability and runtime miss behavior |
+| `m7_test.sh` | M7 | Interrupt-driven ADC + environmental-monitor pipeline (Sampler/Filter/Reporter, bounded-latency GPIO alert) |
