@@ -2,7 +2,7 @@
 
 > From-scratch tiny RTOS, learned top-to-bottom on QEMU (ARM Cortex-M).
 > Builds on prior xv6-x64 scheduler work (`/Users/raam/Desktop/Notes/OS`).
-> Learning doc: `rtos-whiteboard.md` (concepts §0–§9, milestone arc §6b). Session logs: `CC-Session-Logs/`.
+> Learning doc: `rtos-whiteboard.md` (concepts §0–§10, milestone arc §6b). Session logs: `CC-Session-Logs/`.
 > Architecture spec (M0–M5, approved): `docs/superpowers/specs/2026-07-09-rtos-core-architecture-design.md`.
 > M0 implementation plan (complete, merged): `docs/superpowers/plans/2026-07-09-m0-bare-metal-boot.md`.
 > M1 implementation plan (complete, merged): `docs/superpowers/plans/2026-07-10-m1-context-switch.md`.
@@ -10,7 +10,8 @@
 > M3 implementation plan (complete, merged): `docs/superpowers/plans/2026-07-10-m3-blocking-primitives.md`.
 > M4 implementation plan (complete, merged): `docs/superpowers/plans/2026-07-10-m4-priority-inheritance.md`.
 > M5 implementation plan (complete, merged): `docs/superpowers/plans/2026-07-10-m5-real-time-layer.md`.
-> M6 design + plan (implemented, tested, reviewed; awaiting merge): `docs/superpowers/specs/2026-07-15-m6-edf-rms-comparison-design.md`, `docs/superpowers/plans/2026-07-16-m6-edf-rms-comparison.md`.
+> M6 design + plan (complete, merged): `docs/superpowers/specs/2026-07-15-m6-edf-rms-comparison-design.md`, `docs/superpowers/plans/2026-07-16-m6-edf-rms-comparison.md`.
+> M7 design + plan (complete, merged): `docs/superpowers/specs/2026-07-22-m7-adc-driver-env-monitor-design.md`, `docs/superpowers/plans/2026-07-22-m7-adc-driver-env-monitor.md`.
 
 ## Status
 
@@ -18,7 +19,7 @@
 
 **Companion project:** `/Users/raam/Desktop/Notes/LLM/FreeRTOS-QEMU` (also public, own CLAUDE.md) — gets the *real* FreeRTOS kernel running on the same QEMU board, proving the complementary "work inside a production kernel" skill. Both bootstrap+demo tasks complete, final-reviewed, and CI'd there too.
 
-**M6 (EDF vs RMS comparison) is complete and merged.** M7 (Pico hardware port) and the adaptive RL-bandit agent (a separate stretch idea, deferred during M6's brainstorming, not folded into M6) remain out of scope and need their own design pass. Separately, a **Zephyr-QEMU** sibling project has been scoped (not yet created) — see Next Steps.
+**M6 (EDF vs RMS comparison) and M7 (interrupt-driven ADC + environmental-monitor pipeline, QEMU phase) are complete and merged.** The real Pico hardware port (not part of this task) and the adaptive RL-bandit agent (a separate stretch idea, deferred since M6's brainstorming) still need their own design passes. A **Zephyr-QEMU** sibling project has been scoped (not yet created) — see Next Steps.
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
@@ -29,7 +30,7 @@
 | M4 | Priority inheritance — build inversion, then fix (**the payoff**) | ✅ done, merged |
 | M5 | Real-time layer — periodic tasks + deadline-miss counter (RMS capstone) | ✅ done, merged (`rtos/`: `block_until()` extracted from `delay()`, new `rtos.{h,c}` — `periodic_task_create()`/`task_wait_for_release()`/`periodic_get_miss_count()`/`rms_check()`, all integer-arithmetic, no `systick.c` changes needed; `tests/m5_test.sh` proves RMS reports SCHEDULABLE while a deliberately-overrunning task still racks up real deadline misses — the static check and the runtime counter check two different things on purpose) |
 | M6 | EDF vs RMS comparison — `SCHED=RMS`/`EDF` compile-time flag, `WORKLOAD=1-4` utilization sweep, deadline-miss counter as proof | ✅ done, merged |
-| M7 | Stretch — migrate QEMU → real Raspberry Pi Pico | ⏳ needs its own design pass first |
+| M7 | Interrupt-driven ADC driver + environmental-monitor pipeline (QEMU phase) | ✅ QEMU phase done, merged; hardware port still needs its own spec |
 
 ## Key Decisions
 
@@ -75,6 +76,9 @@
 - **A fix subagent once committed directly to `master`** (not its assigned worktree) because the target file (`rtos-whiteboard.md`) lives outside `rtos/`, and included the `Co-Authored-By: Claude` trailer the user had already asked to omit — caught and amended after the fact. Lesson: when dispatching a subagent to edit files that might live outside the current worktree's tracked subtree, explicitly state which branch/location to commit to and restate the no-co-author-trailer convention in the dispatch prompt — don't assume a fresh subagent inherits project conventions it was never told.
 - **CI on GitHub Actions is genuinely cheaper on Linux than local macOS dev was.** Ubuntu's `apt-get install gcc-arm-none-eabi qemu-system-arm` gives a complete toolchain (with newlib) in one step — no toolchain-gap surprises like the sibling FreeRTOS-QEMU project hit locally on macOS (see that project's CLAUDE.md). Verify CI actually passes by watching the run (`gh run watch --exit-status`), not just by confirming the workflow file parses/uploads.
 - **Public-repo readiness needs a human-facing `README.md` distinct from `CLAUDE.md`.** `CLAUDE.md`/`rtos-whiteboard.md` are internal working docs (session-continuity, decision log) — a recruiter or engineer clicking the GitHub link wants a short "what is this, how do I build/run it" doc up front, with a CI badge as a cheap trust signal.
+- **M7's spec anticipated verifying the GPIO alert by reading QEMU's memory-mapped peripheral state back — this doesn't work.** `mps2-an385`'s GPIO blocks are QEMU `create_unimplemented_device` stubs with no real register model, discovered while confirming hardware addresses during planning (not during implementation, this time — caught before any code was written). Fixed by having the firmware itself log `tick_count` immediately before/after the GPIO write and asserting the bound from that UART output, instead of relying on QEMU to model peripheral state it doesn't model.
+- **Sampler in M7 deliberately does not use the M5/M6 periodic-task deadline-miss counter.** That mechanism assumes self-paced release (`task_wait_for_release()` computing its own `next_release` from `tick_count`); an ISR-driven producer's true release event is the hardware timer firing, which the periodic-task bookkeeping has no way to observe. Each queue's `overflow_count` is the correct hard-deadline proxy instead — "did the consumer drain the queue before it filled" is exactly the property that matters for an interrupt-fed pipeline stage.
+- **M7's hand-derived moving-average expected-value table caught a rotation error via implementer BLOCKED-status pushback.** The plan's `EXPECTED_CYCLE` array for the steady-state test had the correct repeating 8-value cycle but was phase-shifted one position from what the test script's `sed -n '3,10p'` line actually sampled (should have been `(21 22 30 38 38 30 21 20)`, not the plan's `(21 20 21 22 30 38 38 30)`). The Task 5 implementer reported BLOCKED with a full root-cause trace instead of silently adjusting the array to force a pass, then the controller re-derived the arithmetic independently by hand, then the task-reviewer subagent re-derived it a third time — three independent hand-traces agreed before the plan was corrected and re-run. Lesson (same as M6's two bugs): a hand-derived expected-value table is exactly the kind of artifact where a transposition/rotation error can hide even after two people template-checked it, and the fix is the same discipline — stop, report BLOCKED with a detailed trace, don't try to make the test pass by adjusting the test.
 - **M6's `busy_wait()` design bug: wall-clock ticks ≠ CPU-time consumed.** The first implementation compared `tick_count` directly against a start snapshot to simulate a task's WCET — but a preempted task's own elapsed-time window silently absorbs the preemption interval (SysTick keeps advancing regardless of who's running), so completion time collapsed to `release + WCET` regardless of scheduling policy, and no genuine RMS-vs-EDF runtime miss ever appeared even though the static schedulability checks correctly diverged. Fixed with `tcb->remaining_wcet_ticks`, a per-task counter decremented only by `SysTick_Handler` for whichever task is actually `current_tcb` at each tick — this correctly attributes CPU ticks only to the task that was genuinely scheduled, restoring the exact response-time-analysis assumptions the workload numbers were derived from.
 - **"Highest-priority never misses" is an RMS-specific guarantee, not a scheduler-agnostic one.** Under fixed-priority scheduling the highest-priority task is never preempted, so its response time always equals its own WCET — TaskA never missed in any M6 workload under RMS. This does **not** carry over to EDF: priority there is dynamic (nearest deadline), so under EDF's overload workload (U>1) a miss can land on either task — confirmed empirically (TaskA and TaskB both accumulated misses under EDF/workload 4). A test that hardcodes "TaskA never misses" across both scheduler builds will incorrectly fail on legitimate EDF-overload behavior.
 - **Subagent-driven-development caught both of the above bugs via implementer pushback, not via review.** Both times, an implementer subagent hit a mismatch between the plan's expected output and the actual QEMU behavior, and — per its explicit instructions — stopped and reported BLOCKED with a full root-cause trace instead of silently adjusting expected values or scheduler code to force a match. Both turned out to be real gaps in the plan (not implementation bugs), fixed by correcting the plan and re-dispatching. Lesson: an implementer that stops and explains a discrepancy is more valuable than one that "makes the test pass" — the instruction to prefer BLOCKED over silent adjustment paid for itself twice in one milestone.
@@ -82,10 +86,11 @@
 
 ## Next Steps
 
-M6 (EDF vs RMS comparison) is complete and merged.
-1. **M7 (Raspberry Pi Pico hardware port)** and the **adaptive RL-bandit agent** (a separate stretch idea, distinct from M6's EDF work) both still need their own `brainstorming` → spec → `writing-plans` cycle — out of scope for both the M0–M5 and M6 specs.
-2. Toolchain is fully installed: `qemu-system-arm`, `arm-none-eabi-gcc`, `arm-none-eabi-gdb` all confirmed working since M0.
-3. The worktree → subagent-driven-development → final review → merge pattern used for M0–M6 worked well each time (including catching two real design bugs via implementer BLOCKED-status pushback in M6) and is the natural template for whatever comes next.
+M7 (interrupt-driven ADC + environmental-monitor pipeline, QEMU phase) is complete and merged.
+1. **M7 Real Pico Hardware Port** (still to be spec'd — separate from this completed QEMU phase) will add real ADC/GPIO peripherals, timer-driven sampling on the actual RP2040, and real-time signal processing on real silicon. The QEMU-phase pipeline established the driver and queue infrastructure; the hardware port just swaps peripheral addresses and interrupt vectors. Estimated scope: one more spec + plan + implementation milestone, similar in size to M7 QEMU phase.
+2. **Adaptive RL-bandit agent** (a separate stretch idea, distinct from M6/M7 work) still needs its own `brainstorming` → spec → `writing-plans` cycle — deferred since M6's brainstorming, not folded into any released milestone.
+3. Toolchain is fully installed: `qemu-system-arm`, `arm-none-eabi-gcc`, `arm-none-eabi-gdb` all confirmed working since M0.
+4. The worktree → subagent-driven-development → final review → merge pattern used for M0–M7 worked well each time (including catching three real design issues: M4 handoff race, M6's two WCET-accounting bugs, M7's EXPECTED_CYCLE rotation error) and is the natural template for whatever comes next.
 
 **Zephyr-QEMU (new sibling project, scoped but not yet created):** a new repo at `/Users/raam/Desktop/Notes/LLM/Zephyr-QEMU` has been brainstormed — target board `qemu_cortex_m3` (Zephyr's generic Cortex-M3 QEMU target, chosen over `mps2/an385` for better Zephyr docs/community support), project arc: (1) bootstrap via `west` workspace + Zephyr SDK, `hello_world`-style demo; (2) periodic task + producer/consumer queue demo mirroring FreeRTOS-QEMU's task 2 (`k_thread`/`k_timer`/`k_msgq`); (3) devicetree overlay exploration; (4) Kconfig-driven feature toggle (contrast with this project's compile-time-flag pattern); (5) driver model exploration (`DEVICE_DT_GET`); (6) docs/public-repo/CI. Brainstorming was mid-flow (arc and board agreed) when this note was preserved — the actual spec doc has not yet been written or committed. Resume by finishing that spec, then `writing-plans`, in the new repo (not this one).
 

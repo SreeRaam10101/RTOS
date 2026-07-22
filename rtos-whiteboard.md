@@ -3,6 +3,7 @@
 > Goal: build solid RTOS intuition on **QEMU (ARM Cortex-M)** before any coding.
 > Audience: I already built an xv6-x64 scheduler (MLFQ+SJF + agent), signals, mmap, VM, FS.
 > Style: brief. Each concept mapped to what I already know from xv6.
+> Learning doc: concepts §0–§10, milestone arc §6b.
 
 ---
 
@@ -171,6 +172,41 @@ an *exact* schedulability proof because this demo uses implicit deadlines
 (`D=T`). With constrained deadlines (`D<T`, as M5's demo used), `U<=1` is
 still necessary but not automatically sufficient — the runtime deadline-miss
 counter remains the ground truth for that stricter case.
+
+---
+
+## §10: Interrupt-Driven ADC Driver + Environmental-Monitor Pipeline (M7, QEMU phase)
+
+Every prior milestone's only I/O was a polling UART driver, which never
+exercised the kernel under genuine interrupt pressure. M7 adds the
+project's first interrupt-driven peripheral driver: CMSDK Timer0 (IRQ8)
+fires every 20 ticks, standing in for "ADC conversion complete" (QEMU's
+`mps2-an385` doesn't model a real ADC), and its ISR pushes a synthetic
+sample into a new bounded-queue kernel primitive (`queue.h/.c`, built on
+the existing semaphore + critical-section primitives).
+
+Three tasks form a real producer/consumer pipeline under RMS fixed
+priorities: **Sampler** (priority 0) drains the ADC queue and hands off to
+**Filter** (priority 1), which computes a 3-sample moving average and
+branches directly to a **bounded-latency GPIO alert** on a threshold
+crossing (not queued through the lower-priority **Reporter**, priority 2,
+which just logs over the existing UART driver). Two design corrections
+were made during planning, before any implementation:
+
+1. QEMU's GPIO peripherals on `mps2-an385` are unimplemented stub devices
+   (`create_unimplemented_device`, confirmed in QEMU's own `hw/arm/mps2.c`)
+   with no readable state — so the alert's bounded latency is proven by
+   the firmware logging `tick_count` immediately before/after the GPIO
+   write over UART, not by reading QEMU's peripheral state back.
+2. Sampler does not use the M5/M6 periodic-task deadline-miss counter,
+   since that mechanism assumes a task self-paces its own release via
+   `block_until()` — it has no way to represent an externally
+   interrupt-driven release. Sampler's real hard-deadline signal is each
+   queue's `overflow_count`, a strictly more accurate proxy for an
+   ISR-driven producer.
+
+This milestone's real hardware port (real Pico, real ADC/GPIO registers)
+remains a separate, not-yet-written spec — see CLAUDE.md's Next Steps.
 
 ---
 
