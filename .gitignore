@@ -1,3 +1,4 @@
 rtos/build/
 rtos/*.o
 .claude/worktrees/
+docs/superpowers/
