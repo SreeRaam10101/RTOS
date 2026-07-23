@@ -9,6 +9,11 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sched: [RMS, EDF]
+    env:
+      SCHED: ${{ matrix.sched }}
     steps:
       - uses: actions/checkout@v4
 
@@ -17,11 +22,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-arm-none-eabi qemu-system-arm
 
-      - name: Build
+      - name: Build (SCHED=${{ matrix.sched }})
         run: |
           cd rtos
           make clean
           make
 
-      - name: Run latest milestone test (M7 -- see tests/README.md for why only the latest test is expected to pass)
+      - name: Run latest milestone test under SCHED=${{ matrix.sched }} (M7 -- see tests/README.md for why only the latest test is expected to pass)
         run: ./tests/m7_test.sh
